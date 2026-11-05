@@ -1,2 +1,280 @@
 <!doctype html>
-<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0;url=https://streambim-pdf-ritningsbord.raskkraskk.chatgpt.site/"><title>Team 5 · Ritningsbord</title><style>body{font:16px system-ui;background:#edf0e9;color:#243d31;display:grid;place-items:center;min-height:95vh}main{max-width:460px;padding:30px}a{color:#146d68}p{line-height:1.8}</style></head><body><main><h1>Ritningsbord</h1><p>PDF-dokument läses direkt från StreamBIM. Endast annoteringar lagras i den gemensamma databasen.</p><p><a href="https://streambim-pdf-ritningsbord.raskkraskk.chatgpt.site/">Öppna PDF-widgeten →</a></p></main></body></html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1"
+    />
+    <meta name="theme-color" content="#172c38" />
+    <title>Ritningsbord — PDF & annotering</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-icon">⌑</span
+        ><span
+          >ritningsbord<span class="brand-sub"
+            >STREAMBIM · PDF & ANNOTERING</span
+          ></span
+        >
+      </div>
+      <div class="workspace">
+        <span class="workspace-dot"></span> StreamBIM dokumentbibliotek
+        <span class="prototype">PROTOTYP</span>
+      </div>
+      <button id="helpButton" class="header-help">
+        ? <span>Så fungerar det</span></button
+      ><span id="avatar" class="avatar">R</span>
+    </header>
+    <div class="app-shell">
+      <aside id="sidebar" class="sidebar">
+        <div class="library-heading">
+          <span class="eyebrow">ARBETSYTA</span>
+          <h1>Dokumentbibliotek <span id="docCount">0</span></h1>
+          <p>Ritningar, revisioner och gemensamma markeringar.</p>
+        </div>
+        <div class="source-note">
+          ↗ PDF läses direkt från StreamBIM<br /><small
+            >Endast annoteringar lagras här</small
+          >
+        </div>
+        <label class="search"
+          ><span>⌕</span
+          ><input
+            id="searchInput"
+            placeholder="Sök på filnamn…"
+            aria-label="Sök på filnamn"
+        /></label>
+        <div class="filter-heading">
+          <span>LABELS</span><button id="clearLabels">Rensa</button>
+        </div>
+        <div id="labels" class="labels"></div>
+        <label class="match-label"
+          >Matchning<select id="labelMode" aria-label="Labelmatchning">
+            <option value="any">Minst en vald</option>
+            <option value="all">Alla valda</option>
+          </select></label
+        >
+        <div class="list-heading">
+          <span>PDF-DOKUMENT</span
+          ><button id="refreshButton" aria-label="Uppdatera bibliotek">
+            ↻
+          </button>
+        </div>
+        <div id="documents" class="documents"></div>
+        <div class="sidebar-bottom">
+          <span class="online-dot"></span
+          ><span
+            >Gemensam databas<span class="muted-small"
+              >Ändringar synkas automatiskt</span
+            ></span
+          >
+        </div>
+      </aside>
+      <main class="main">
+        <div class="document-header">
+          <button
+            id="libraryToggle"
+            class="icon-button mobile-only"
+            aria-label="Visa dokumentbibliotek"
+          >
+            ☰</button
+          ><span class="pdf-badge">PDF</span>
+          <div class="document-title">
+            <span class="eyebrow" id="documentPath">STREAMBIM / DOKUMENT</span>
+            <h2 id="documentName">Ansluter till StreamBIM…</h2>
+          </div>
+          <div class="revision-control">
+            <label for="revisionSelect">REVISION</label
+            ><select id="revisionSelect" aria-label="Välj revision"></select>
+          </div>
+        </div>
+        <div id="notice" class="notice" hidden></div>
+        <div class="toolbar">
+          <div class="tool-group" role="group" aria-label="Verktyg">
+            <button
+              data-tool="hand"
+              class="tool active"
+              aria-label="Hand — panorera"
+            >
+              <span>✥</span><small>Hand</small></button
+            ><button data-tool="pen" class="tool" aria-label="Frihandspenna">
+              <span>✎</span><small>Penna</small></button
+            ><button
+              data-tool="highlight"
+              class="tool"
+              aria-label="Överstrykningspenna"
+            >
+              <span>▱</span><small>Markera</small></button
+            ><button
+              data-tool="select"
+              class="tool"
+              aria-label="Välj annotering"
+            >
+              <span>↖</span><small>Välj</small>
+            </button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div id="colors" class="colors" role="group" aria-label="Färg"></div>
+          <div class="toolbar-divider"></div>
+          <div
+            id="sizes"
+            class="sizes"
+            role="group"
+            aria-label="Linjebredd i PDF-enheter"
+          ></div>
+          <span class="toolbar-spacer"></span
+          ><button
+            id="undoButton"
+            class="icon-button"
+            aria-label="Ångra"
+            title="Ångra"
+          >
+            ↶</button
+          ><button
+            id="redoButton"
+            class="icon-button"
+            aria-label="Gör om"
+            title="Gör om"
+          >
+            ↷</button
+          ><button
+            id="deleteButton"
+            class="icon-button danger"
+            aria-label="Radera vald annotering"
+            title="Radera vald annotering"
+          >
+            ⌫</button
+          ><button id="annotationToggle" class="annotation-toggle">
+            <span>☷</span><span id="annotationCount">0</span>
+          </button>
+        </div>
+        <div class="viewer-wrap">
+          <div
+            id="stage"
+            class="stage"
+            tabindex="0"
+            aria-label="PDF-ritning. Använd verktygen för att rita och navigera."
+          >
+            <div id="plane" class="plane" hidden>
+              <canvas id="pdfCanvas"></canvas
+              ><svg id="overlay" xmlns="http://www.w3.org/2000/svg">
+                <g id="strokes"></g>
+              </svg>
+            </div>
+            <div id="loading" class="loading">
+              <span class="spinner"></span
+              ><strong>Förbereder ritningsbordet</strong
+              ><span>PDF och markeringar laddas separat</span>
+            </div>
+            <div id="empty" class="empty" hidden>
+              <span>⌑</span>
+              <h2>Plats för nästa ritning.</h2>
+              <p>
+                Öppna denna widgetadress som widget i StreamBIM för att läsa
+                projektets dokument.
+              </p>
+              <button id="copyUrl" class="primary">
+                Kopiera widgetadress ↗
+              </button>
+            </div>
+          </div>
+          <div class="viewer-top-tag">
+            <span class="online-dot"></span> Originalfilen lämnas orörd
+          </div>
+          <div id="annotationPanel" class="annotation-panel" hidden>
+            <div class="panel-heading">
+              <strong>Annoteringar</strong
+              ><button id="closePanel" aria-label="Stäng annoteringslista">
+                ×
+              </button>
+            </div>
+            <p class="muted-small">Gemensamma för alla revisioner</p>
+            <div id="annotationList"></div>
+            <button id="applyStyle" class="secondary">
+              Använd vald färg och bredd
+            </button>
+          </div>
+          <div class="navigation">
+            <button id="prevPage" aria-label="Föregående sida">‹</button
+            ><label
+              ><input
+                id="pageInput"
+                type="number"
+                min="1"
+                value="1"
+                aria-label="Sidnummer"
+              /><span id="pageTotal">/ 1</span></label
+            ><button id="nextPage" aria-label="Nästa sida">›</button
+            ><span class="nav-divider"></span
+            ><button id="zoomOut" aria-label="Zooma ut">−</button
+            ><span id="zoomValue">100%</span
+            ><button id="zoomIn" aria-label="Zooma in">＋</button
+            ><span class="nav-divider"></span
+            ><button id="fitButton">⊡ <span>Anpassa sida</span></button>
+          </div>
+        </div>
+        <footer class="statusbar">
+          <span id="gestureHint"
+            >Dra för att panorera · mushjul för att zooma</span
+          ><span id="syncStatus" role="status"
+            ><i class="online-dot"></i> Ansluter…</span
+          ><button id="retryButton" hidden>Försök spara igen</button
+          ><button id="exportButton" hidden>Exportera osparat</button>
+        </footer>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <dialog id="helpDialog">
+      <button id="closeHelp" class="dialog-close" aria-label="Stäng hjälp">
+        ×</button
+      ><span class="eyebrow">VÄLKOMMEN TILL RITNINGSBORDET</span>
+      <h2>En ritning. Alla på samma sida.</h2>
+      <p>
+        Öppna en PDF, välj penna och rita direkt. Dina markeringar sparas
+        separat och synkas med andra som har åtkomst till dokumentet och
+        webbplatsen.
+      </p>
+      <div class="help-grid">
+        <div>
+          <b>✎ Rita & granska</b>
+          <p>
+            Ett finger eller penna ritar. Välj ett streck för att ändra färg,
+            bredd eller radera.
+          </p>
+        </div>
+        <div>
+          <b>✥ Navigera enkelt</b>
+          <p>
+            Två fingrar panorerar och zoomar i alla lägen. På dator: mushjul
+            zoomar, mellanslag + dra panorerar.
+          </p>
+        </div>
+        <div>
+          <b>▤ Byt revision</b>
+          <p>
+            Annoteringar följer dokumentets PDF-koordinater. Kontrollera
+            sidordning vid revisionsbyte. Innehåll passas aldrig in automatiskt.
+          </p>
+        </div>
+        <div>
+          <b>✓ Spara tillsammans</b>
+          <p>
+            Grön status betyder sparat. Vid fel finns strecken kvar i den lokala
+            kön. Försök igen eller exportera dem.
+          </p>
+        </div>
+      </div>
+      <p class="help-note">
+        StreamBIM-widget på Vercel · PDF.js · PostgreSQL för annoteringar.
+        PDF-filer laddas direkt från StreamBIM utan beständig lagring. * Bredd
+        anges i PDF-enheter (normalt 1/72 tum; UserUnit respekteras). Touch på
+        fysiska iOS- och Android-enheter återstår att verifiera.
+      </p>
+      <button id="startButton" class="primary">Till ritningen →</button>
+    </dialog>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

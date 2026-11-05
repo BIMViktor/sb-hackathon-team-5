@@ -105,18 +105,12 @@ async function authorize(request, env, scope) {
 export async function api(request, env) {
   try {
     const url = new URL(request.url),
-      actor = request.headers.get("oai-authenticated-user-id");
+      actor = env.actor;
     if (!actor)
       throw fail(
-        "Logga in på Sites för att använda annoteringsdatabasen.",
+        "Webbläsarsessionen saknas. Ladda om widgeten för att ansluta till annoteringsdatabasen.",
         401,
       );
-    if (url.pathname === "/api/me")
-      return json({
-        id: actor,
-        name:
-          request.headers.get("oai-authenticated-user-email") || "Användare",
-      });
     if (!env.DB) throw fail("Databasen är inte ansluten.", 503);
     if (
       request.method !== "GET" &&

@@ -45,6 +45,8 @@ const S = {
   revWarning: "",
   pageWarning: "",
   syncError: "",
+  persistence: false,
+  storageWarning: "",
 };
 const colors = [
   ["#da654f", "Korall"],
@@ -74,7 +76,7 @@ function status() {
   const failed = S.queue.some((x) => x.error);
   const q = S.queue.length;
   $("syncStatus").innerHTML =
-    `<i class="online-dot"></i>${!S.me ? "Inte ansluten till StreamBIM" : q ? (failed ? "Sparning misslyckades" : `Sparar ${q} ändring${q > 1 ? "ar" : ""}…`) : S.syncError ? "Synkronisering misslyckades" : "Sparat · synkas automatiskt"}`;
+    `<i class="online-dot"></i>${!S.me ? "Inte ansluten till StreamBIM" : !S.persistence ? "Läsläge · gemensam sparning ej ansluten" : q ? (failed ? "Sparning misslyckades" : `Sparar ${q} ändring${q > 1 ? "ar" : ""}…`) : S.syncError ? "Synkronisering misslyckades" : "Sparat · synkas automatiskt"}`;
   $("syncStatus").classList.toggle("error", failed || !!S.syncError);
   $("retryButton").hidden = !failed;
   $("exportButton").hidden = !q;
@@ -131,11 +133,17 @@ function activeAnnotations() {
   return S.annotations.filter((a) => !a.deleted);
 }
 function notice() {
-  const texts = [S.revWarning, S.pageWarning].filter(Boolean);
+  const texts = [S.storageWarning, S.revWarning, S.pageWarning].filter(Boolean);
   $("notice").textContent = texts.join(" ");
   $("notice").hidden = !texts.length;
 }
 function setTool(tool) {
+  if (!S.persistence && tool !== "hand") {
+    toast(
+      "Gemensam sparning är inte ansluten. Ritverktygen aktiveras när databas och dokumentåtkomst är verifierade.",
+    );
+    return;
+  }
   S.tool = tool;
   S.gesture = null;
   for (const b of document.querySelectorAll("[data-tool]"))
@@ -326,10 +334,29 @@ async function openDocument(doc, revisionId) {
       request(
         `/api/documents/${encodeURIComponent(doc.id)}/pdf?revision=${encodeURIComponent(S.revision.id)}`,
       ),
-      request(`/api/documents/${encodeURIComponent(doc.id)}/annotations`),
+      S.me?.databaseReady
+        ? request(`/api/documents/${encodeURIComponent(doc.id)}/annotations`)
+            .then((records) => {
+              if (epoch === S.epoch) {
+                S.persistence = true;
+                S.storageWarning = "";
+              }
+              return records;
+            })
+            .catch((error) => {
+              if (epoch === S.epoch) {
+                S.persistence = false;
+                S.storageWarning = error.message;
+                setTool("hand");
+              }
+              return [];
+            })
+        : Promise.resolve([]),
     ]);
     if (epoch !== S.epoch) return;
-    S.doc.annotation_count = annotations.filter((a) => !a.deleted).length;
+    S.doc.annotation_count = S.persistence
+      ? annotations.filter((a) => !a.deleted).length
+      : null;
     const card = S.docs.find((d) => d.id === doc.id);
     if (card) card.annotation_count = S.doc.annotation_count;
     renderLibrary();
@@ -604,6 +631,7 @@ stage.addEventListener("pointerdown", (e) => {
     return;
   }
   const point = pdfPoint(e);
+  if (!S.persistence && S.tool !== "hand") return;
   if (S.tool === "hand" || S.space) {
     S.gesture = { type: "pan", start: localPoint(e), camera: { ...S.camera } };
     return;
@@ -804,6 +832,7 @@ function overlayPending() {
   }
 }
 async function flush() {
+  if (!S.persistence) return;
   if (S.saving) return;
   S.saving = true;
   try {
@@ -851,7 +880,7 @@ async function flush() {
   }
 }
 async function sync() {
-  if (!S.doc || !S.pdf || S.saving) return;
+  if (!S.doc || !S.pdf || S.saving || !S.me?.databaseReady) return;
   const epoch = S.epoch,
     id = S.doc.id;
   try {
@@ -862,6 +891,9 @@ async function sync() {
     S.annotations = records;
     overlayPending();
     S.syncError = "";
+    S.persistence = true;
+    S.storageWarning = "";
+    notice();
     updatePageWarning();
     draw();
   } catch (e) {
@@ -1025,11 +1057,19 @@ async function init() {
   try {
     await sb.connect();
     S.me = await request("/api/me");
+    if (!S.me.databaseReady) {
+      S.persistence = false;
+      S.storageWarning =
+        S.me.error || "Gemensam databas är inte ansluten i Vercel.";
+      notice();
+    }
     document.querySelector(".workspace").firstChild.textContent =
       `StreamBIM · projekt ${sb.projectId} `;
     $("avatar").textContent = S.me.name.slice(0, 1).toUpperCase();
     try {
-      S.queue = JSON.parse(localStorage.getItem(queueKey()) || "[]");
+      S.queue = S.me.id
+        ? JSON.parse(localStorage.getItem(queueKey()) || "[]")
+        : [];
     } catch {
       S.queue = [];
       toast("Den lokala sparningskön kunde inte läsas.");

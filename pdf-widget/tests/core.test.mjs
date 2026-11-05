@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
-import { api, validateAnnotation, validateProof } from "../worker/api.js";
+import {
+  api as coreApi,
+  validateAnnotation,
+  validateProof,
+} from "../server/annotations.js";
+const api = (request, env) =>
+  coreApi(request, { ...env, actor: request.headers.get("x-test-actor") });
 import {
   screenToPdf,
   pdfToScreen,
@@ -66,10 +72,7 @@ function adapter(db) {
 async function setup() {
   const db = new DatabaseSync(":memory:");
   db.exec(
-    await readFile(
-      new URL("../drizzle/0000_workspace.sql", import.meta.url),
-      "utf8",
-    ),
+    await readFile(new URL("./sqlite-schema.sql", import.meta.url), "utf8"),
   );
   const methods = [];
   return {
@@ -90,7 +93,7 @@ function req(method = "GET", body, extra = {}) {
   return new Request("https://widget.test/api/annotations?" + scope, {
     method,
     headers: {
-      "oai-authenticated-user-id": "alice",
+      "x-test-actor": "alice",
       origin: "https://widget.test",
       "x-streambim-download":
         environment + "/project-42/api/v1/documents/1002/2/download?token=test",
@@ -192,8 +195,7 @@ test("concurrent updates conflict, deletion cannot resurrect; other user sees ed
   const edit = op(1);
   edit.annotation = { ...annotation, color: "#abcdef" };
   assert.equal(
-    (await api(req("POST", edit, { "oai-authenticated-user-id": "bob" }), env))
-      .status,
+    (await api(req("POST", edit, { "x-test-actor": "bob" }), env)).status,
     200,
   );
   assert.equal((await api(req("POST", op(1)), env)).status, 409);
@@ -216,15 +218,14 @@ test("scope isolation, no unauthenticated writes, no PDF upload endpoints", asyn
   const result = await api(new Request(u, { headers: other.headers }), env);
   assert.equal(result.status, 403);
   assert.equal(
-    (await api(req("GET", null, { "oai-authenticated-user-id": "" }), env))
-      .status,
+    (await api(req("GET", null, { "x-test-actor": "" }), env)).status,
     401,
   );
   assert.equal(
     (
       await api(
         new Request("https://widget.test/api/import", {
-          headers: { "oai-authenticated-user-id": "alice" },
+          headers: { "x-test-actor": "alice" },
         }),
         env,
       )

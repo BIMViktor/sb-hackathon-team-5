@@ -1,17 +1,26 @@
 {
-  "name": "streambim-hackathon-starter",
+  "name": "streambim-ritningsbord",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "db:migrate": "node scripts/migrate.mjs",
+    "test": "node --test pdf-widget/tests/*.test.mjs tests/*.test.mjs"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^5.7.284",
+    "penpal": "7.0.6",
+    "postgres": "^3.4.7"
   },
   "devDependencies": {
-    "vite": "^6.2.0"
+    "@electric-sql/pglite": "^0.5.10",
+    "@napi-rs/canvas": "^0.1.100",
+    "esbuild": "^0.25.0",
+    "pdf-lib": "^1.17.1"
   }
 }

@@ -192,7 +192,7 @@ export class StreamBIM {
       !(response.headers.get("content-type") || "").includes("application/pdf")
     )
       throw new Error(
-        "PDF-binärdata kunde inte hämtas direkt från StreamBIM. Kontrollera signerad länk och CORS för widgetens Sites-adress.",
+        "PDF-binärdata kunde inte hämtas direkt från StreamBIM. Kontrollera signerad länk och CORS för widgetens Vercel-adress.",
       );
     return response;
   }
