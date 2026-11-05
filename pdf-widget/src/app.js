@@ -73,6 +73,12 @@ function toast(message) {
   toast.timer = setTimeout(() => ($("toast").hidden = true), 4500);
 }
 function status() {
+  $("storageConnection").innerHTML = S.persistence
+    ? 'Gemensam databas<span class="muted-small">Ändringar synkas automatiskt</span>'
+    : S.me
+      ? 'Sparning är inte ansluten<span class="muted-small">Dokumentet öppnas i läsläge</span>'
+      : 'Väntar på anslutning<span class="muted-small">Öppna widgeten i StreamBIM</span>';
+  document.querySelector('.sidebar-bottom .online-dot').style.background = S.persistence ? '#398d6b' : '#97a29a';
   const failed = S.queue.some((x) => x.error);
   const q = S.queue.length;
   $("syncStatus").innerHTML =
