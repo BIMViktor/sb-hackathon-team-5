@@ -913,9 +913,12 @@ async function init() {
     }, 15000);
   } catch (e) {
     $("loading").hidden = true;
-    $("documentName").textContent = "Öppna som StreamBIM-widget";
-    $("empty").querySelector("h2").textContent =
-      "Dina ritningar stannar i StreamBIM.";
+    $("documentName").textContent = S.me
+      ? "Projekt anslutet · dokumenthämtning misslyckades"
+      : "Öppna som StreamBIM-widget";
+    $("empty").querySelector("h2").textContent = S.me
+      ? "Ansluten till projekt " + sb.projectId
+      : "Dina ritningar stannar i StreamBIM.";
     status();
     $("empty").hidden = false;
     $("empty").querySelector("p").textContent = e.message;

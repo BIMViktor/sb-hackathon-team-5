@@ -66,13 +66,16 @@ export class StreamBIM {
       (labels.data || []).map((l) => [l.id, l.attributes.name]),
     ));
     const folderMap = new Map((folders.data || []).map((f) => [f.id, f]));
-    let skip = 0,
-      result = [];
+    let path = this.base() + "/v2/documents";
+    const result = [],
+      visited = new Set();
     for (;;) {
-      const response = await this.request(
-        this.base() +
-          `/v2/documents?filter[fileExtensions]=pdf&page[limit]=200&page[skip]=${skip}`,
-      );
+      if (visited.has(path))
+        throw new Error("StreamBIM returnerade en upprepad dokumentlistasida.");
+      visited.add(path);
+      // Use the base endpoint; filter PDF/calibration locally. Only follow
+      // pagination URLs supplied by StreamBIM itself, never invented filters.
+      const response = await this.request(path);
       if (!Array.isArray(response.data))
         throw new Error("StreamBIM returnerade ingen dokumentlista.");
       for (const d of response.data) {
@@ -91,12 +94,24 @@ export class StreamBIM {
         }
         result.push(this.normalize(d, [...labelIds]));
       }
-      skip += response.data.length;
-      if (response.data.length < 200 || skip >= response.meta?.total) break;
-      if (skip >= 10000)
+      const next =
+        typeof response.links?.next === "string"
+          ? response.links.next
+          : response.links?.next?.href;
+      if (!next) break;
+      if (result.length >= 10000)
         throw new Error(
           "Biblioteket är för stort för prototypens gräns på 10 000 dokument.",
         );
+      const nextUrl = new URL(next, this.environment + path);
+      if (
+        nextUrl.origin !== this.environment ||
+        nextUrl.pathname !== this.base() + "/v2/documents"
+      )
+        throw new Error(
+          "StreamBIM returnerade en dokumentlistasida utanför projektet.",
+        );
+      path = nextUrl.pathname + nextUrl.search;
     }
     return result;
   }

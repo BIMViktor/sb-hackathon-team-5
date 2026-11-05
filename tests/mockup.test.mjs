@@ -118,6 +118,38 @@ test("previous revision and unsigned download paths use observed StreamBIM endpo
   assert.equal(calls[1], "/project-42/api/v1/microtoken");
   assert.equal(new URL(url).searchParams.get("microtoken"), "temporary-token");
 });
+test("document discovery uses the unfiltered endpoint and follows only server-provided project pages", async () => {
+  const client = new StreamBIM();
+  client.projectId = "42";
+  client.environment = "https://app.streambim.com";
+  const paths = [];
+  client.request = async (path) => {
+    paths.push(path);
+    if (path.endsWith("document-labels") || path.endsWith("/folders"))
+      return { data: [] };
+    if (path === "/project-42/api/v1/v2/documents")
+      return {
+        data: [],
+        links: { next: "/project-42/api/v1/v2/documents?page[skip]=2" },
+      };
+    if (path === "/project-42/api/v1/v2/documents?page[skip]=2")
+      return { data: [] };
+    throw new Error("Unexpected filtering or pagination parameter");
+  };
+  assert.deepEqual(await client.documents(), []);
+  assert.deepEqual(
+    paths.filter((p) => p.includes("/v2/documents")),
+    [
+      "/project-42/api/v1/v2/documents",
+      "/project-42/api/v1/v2/documents?page[skip]=2",
+    ],
+  );
+  client.request = async (path) =>
+    path.endsWith("/folders") || path.endsWith("document-labels")
+      ? { data: [] }
+      : { data: [], links: { next: "https://other.test/documents" } };
+  await assert.rejects(() => client.documents(), /utanför projektet/);
+});
 test("mock client has no persistent annotation storage and server rejects annotation writes", async () => {
   const source = await readFile(
     new URL("../pdf-widget/src/app.js", import.meta.url),
