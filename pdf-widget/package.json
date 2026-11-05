@@ -1,0 +1,19 @@
+{
+  "name": "streambim-pdf-widget",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^5.4.394",
+    "penpal": "7.0.6",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "wrangler": "^4.0.0"
+  }
+}
