@@ -1,3 +1,5 @@
+import { SessionLayers } from "./session-layers.js";
+const layers = new SessionLayers();
 import { SessionAnnotations } from "./session-annotations.js";
 const sessionAnnotations = new SessionAnnotations();
 let pdfjs;
@@ -97,7 +99,9 @@ async function request(path) {
   throw new Error("Mockupen har ingen sparningsanslutning.");
 }
 function selected() {
-  return S.annotations.find((a) => a.id === S.selected && !a.deleted);
+  return S.annotations.find(
+    (a) => a.id === S.selected && !a.deleted && layers.isVisible(a.layerId),
+  );
 }
 function activeAnnotations() {
   return S.annotations.filter((a) => !a.deleted);
@@ -484,7 +488,9 @@ function draw() {
     renderAnnotations();
     return;
   }
-  const list = activeAnnotations().filter((a) => a.pageIndex === S.pageIndex);
+  const list = activeAnnotations().filter(
+    (a) => a.pageIndex === S.pageIndex && layers.isVisible(a.layerId),
+  );
   if (S.gesture?.type === "draw") list.push(S.gesture.annotation);
   group.replaceChildren(
     ...list.map((a) => {
@@ -513,6 +519,7 @@ function draw() {
   status();
 }
 function renderAnnotations() {
+  renderLayers();
   const list = activeAnnotations();
   $("annotationCount").textContent = list.length;
   $("annotationList").replaceChildren(
@@ -526,10 +533,18 @@ function renderAnnotations() {
         title = document.createElement("strong"),
         sub = document.createElement("small");
       title.textContent = `${a.tool === "highlight" ? "Överstrykning" : "Pennstreck"} · sida ${a.pageIndex + 1}`;
-      sub.textContent = `${a.width} PDF-enh. · ${a.updatedBy?.slice(0, 18) || "mockup"}`;
+      sub.textContent = `${layers.items.find((layer) => layer.id === (a.layerId || "base"))?.name || "Allmänt"} · ${a.width} PDF-enh.`;
       text.append(title, sub);
       b.append(c, text);
       b.onclick = async () => {
+        if (!S.pdf) return;
+        const layer = layers.items.find(
+          (item) => item.id === (a.layerId || "base"),
+        );
+        if (layer) {
+          layers.activate(layer.id);
+          renderLayers();
+        }
         if (a.pageIndex >= S.pdf.numPages) {
           toast("Sidan saknas i den valda revisionen.");
           return;
@@ -543,6 +558,122 @@ function renderAnnotations() {
     }),
   );
 }
+function renderLayers() {
+  $("layerCount").textContent = layers.items.length;
+  $("layersList").replaceChildren(
+    ...layers.items.map((layer) => {
+      const row = document.createElement("div");
+      row.className =
+        "layer-row" +
+        (layers.activeId === layer.id ? " active" : "") +
+        (!layer.visible ? " muted" : "");
+      const activate = document.createElement("button");
+      activate.className = "layer-activate";
+      activate.setAttribute(
+        "aria-pressed",
+        String(layers.activeId === layer.id),
+      );
+      activate.title = "Aktivera " + layer.name;
+      const dot = document.createElement("i"),
+        label = document.createElement("span"),
+        count = document.createElement("small");
+      dot.className = "layer-dot";
+      label.textContent = layer.name;
+      count.textContent = S.annotations.filter(
+        (a) => !a.deleted && (a.layerId || "base") === layer.id,
+      ).length;
+      count.title = "Markeringar på denna ritning";
+      activate.append(dot, label, count);
+      activate.onclick = () => activateLayer(layer.id);
+      const visibility = document.createElement("button");
+      visibility.className = "layer-icon";
+      visibility.textContent = layer.visible ? "◉" : "○";
+      visibility.title = layer.visible ? "Dölj lager" : "Visa lager";
+      visibility.setAttribute(
+        "aria-label",
+        (layer.visible ? "Dölj " : "Visa ") + layer.name,
+      );
+      visibility.onclick = () => {
+        resetGesture();
+        layers.toggle(layer.id);
+        if (!selected()) S.selected = null;
+        draw();
+      };
+      const rename = document.createElement("button");
+      rename.className = "layer-icon";
+      rename.textContent = "✎";
+      rename.setAttribute("aria-label", "Byt namn på " + layer.name);
+      rename.onclick = () => {
+        resetGesture();
+        $("renameLayerId").value = layer.id;
+        $("renameLayerName").value = layer.name;
+        $("renameLayerError").textContent = "";
+        $("renameLayerDialog").showModal();
+        $("renameLayerName").focus();
+        $("renameLayerName").select();
+      };
+      row.append(activate, visibility, rename);
+      return row;
+    }),
+  );
+  for (const id of ["activeLayerSelect", "selectionLayer"]) {
+    const select = $(id);
+    select.replaceChildren(
+      ...layers.items.map((layer) => {
+        const option = document.createElement("option");
+        option.value = layer.id;
+        option.textContent = layer.name;
+        return option;
+      }),
+    );
+    if (id === "activeLayerSelect") select.value = layers.activeId || "";
+    else {
+      select.disabled = !selected();
+      select.value = selected()?.layerId || "base";
+    }
+  }
+  $("activeLayerLabel").textContent = layers.active?.name || "Välj ett lager";
+}
+function activateLayer(id) {
+  resetGesture();
+  layers.activate(id);
+  draw();
+}
+$("createLayerForm").onsubmit = (event) => {
+  event.preventDefault();
+  try {
+    resetGesture();
+    const layer = layers.create($("newLayerName").value);
+    $("newLayerName").value = "";
+    $("layerError").textContent = "";
+    draw();
+    toast("Aktivt lager: " + layer.name);
+  } catch (error) {
+    $("layerError").textContent = error.message;
+  }
+};
+$("activeLayerSelect").onchange = (event) => activateLayer(event.target.value);
+$("renameLayerForm").onsubmit = (event) => {
+  event.preventDefault();
+  try {
+    layers.rename($("renameLayerId").value, $("renameLayerName").value);
+    $("renameLayerDialog").close();
+    draw();
+  } catch (error) {
+    $("renameLayerError").textContent = error.message;
+  }
+};
+$("cancelRenameLayer").onclick = () => $("renameLayerDialog").close();
+$("selectionLayer").onchange = (event) => {
+  const a = selected();
+  if (!a) return;
+  const before = structuredClone(a);
+  a.layerId = event.target.value;
+  enqueue(a, false);
+  S.undo.push({ before, after: structuredClone(a) });
+  S.redo = [];
+  draw();
+};
 function localPoint(e) {
   const r = stage.getBoundingClientRect();
   return [e.clientX - r.left, e.clientY - r.top];
@@ -593,6 +724,7 @@ stage.addEventListener("pointerdown", (e) => {
       .find(
         (a) =>
           a.pageIndex === S.pageIndex &&
+          layers.isVisible(a.layerId) &&
           hitStroke(point, a.points, tol + a.width / 2),
       );
     S.selected = hit?.id || null;
@@ -601,11 +733,16 @@ stage.addEventListener("pointerdown", (e) => {
     draw();
     return;
   }
+  if (!layers.active) {
+    toast("Aktivera ett lager för att rita.");
+    return;
+  }
   const tool = S.tool;
   S.gesture = {
     type: "draw",
     annotation: {
       id: crypto.randomUUID(),
+      layerId: layers.activeId,
       pageIndex: S.pageIndex,
       tool,
       color: S.color,
@@ -791,8 +928,18 @@ function history(direction) {
     const current = S.annotations.find((a) => a.id === source.id && !a.deleted);
     if (
       !current ||
-      JSON.stringify([current.points, current.color, current.width]) !==
-        JSON.stringify([source.points, source.color, source.width])
+      JSON.stringify([
+        current.points,
+        current.color,
+        current.width,
+        current.layerId,
+      ]) !==
+        JSON.stringify([
+          source.points,
+          source.color,
+          source.width,
+          source.layerId,
+        ])
     ) {
       toast(
         "Strecket har ändrats av en annan användare. Ångra kan inte skriva över den ändringen.",
@@ -824,6 +971,7 @@ function history(direction) {
         points: structuredClone(target.points),
         color: target.color,
         width: target.width,
+        layerId: target.layerId,
       });
     enqueue(current, false);
   }
@@ -856,10 +1004,16 @@ $("pageInput").onchange = (e) => {
 $("undoButton").onclick = () => history("undo");
 $("redoButton").onclick = () => history("redo");
 $("deleteButton").onclick = removeSelected;
-$("libraryToggle").onclick = () => $("sidebar").classList.toggle("open");
-$("annotationToggle").onclick = () =>
-  ($("annotationPanel").hidden = !$("annotationPanel").hidden);
-$("closePanel").onclick = () => ($("annotationPanel").hidden = true);
+$("libraryToggle").onclick = () => {
+  $("sidebar").classList.toggle("open");
+  $("layerPanel").classList.remove("open");
+};
+$("annotationToggle").onclick = () => {
+  $("layerPanel").classList.toggle("open");
+  $("sidebar").classList.remove("open");
+};
+$("layerHeaderToggle").onclick = $("annotationToggle").onclick;
+$("closePanel").onclick = () => $("layerPanel").classList.remove("open");
 $("applyStyle").onclick = () => {
   const a = selected();
   if (!a) return;
@@ -887,12 +1041,12 @@ new ResizeObserver(() => {
 async function init() {
   renderColors();
   renderSizes();
+  renderLayers();
   status();
   try {
     await sb.connect();
     S.me = { id: sb.email || "mockup", name: sb.email || "Mockup" };
-    S.storageWarning =
-      "MOCKUP: annoteringar finns bara i den här flikens minne. De sparas inte och försvinner vid omladdning.";
+    S.storageWarning = "";
     notice();
     document.querySelector(".workspace").textContent =
       "StreamBIM · projekt " + sb.projectId + " · kalibrerade PDF";

@@ -30,3 +30,11 @@ Databasvariabler behövs inte och bygget kör inga migreringar. /api/status rapp
 Tester omfattar PDF-koordinater och crop/rotation, kalibreringsfilter, label-ID:n, revisionslänkar, microtoken och minnesbaserade annoteringar som inte kan återläsas i en ny session. Backendens tidigare tester finns kvar, men innebär inte att mockupen sparar något. Fysiska iOS/Android-gester måste fortfarande testas separat.
 
 Se pdf-widget/README.md för koordinatkontrakt och licenser.
+
+## Lager i mockupen
+
+Dokumentbiblioteket ligger till vänster och lagerpanelen till höger. Skapa exempelvis KANALER_DRAGNING med plusknappen; det nya lagret aktiveras direkt. Nya streck får aktivt lager-ID redan när ritgesten börjar. Befintliga streck flyttas inte när du byter aktivt lager. Ett lagerbyte avbryter en pågående gest för att undvika streck på fel lager.
+
+Lagerdefinitioner, namn, synlighet och aktivt lager ligger i flikens arbetsminne och behålls när du byter dokument eller revision. Geometri är fortsatt separat per dokument. Ögonknappen döljer/visar ett lager; dolda streck kan inte väljas på ritningen. Pennknappen byter namn. Under Markeringar på ritningen kan ett valt streck flyttas till ett annat lager, med ångra/gör om. Allt försvinner vid omladdning, enligt mockupens lagringsmodell.
+
+På smala skärmar öppnas biblioteket och lagerpanelen som sidopaneler via respektive knapp i dokumenthuvudet. Aktivt lager kan även bytas i verktygsradens rullista.
