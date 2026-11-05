@@ -2,10 +2,10 @@ import { build } from "esbuild";
 import { readFile, writeFile, mkdir, cp } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { migrate } from "./migrate.mjs";
+
 const require = createRequire(import.meta.url),
   pdfRoot = path.dirname(require.resolve("pdfjs-dist/package.json"));
-await migrate();
+
 await mkdir("dist", { recursive: true });
 await build({
   entryPoints: ["pdf-widget/src/app.js"],
@@ -13,7 +13,9 @@ await build({
   minify: true,
   format: "esm",
   target: "es2022",
-  outfile: "dist/app.js",
+  outdir: "dist",
+  splitting: true,
+  chunkNames: "chunks/[name]-[hash]",
 });
 await cp("pdf-widget/src/app.css", "dist/app.css");
 await cp("pdf-widget/src/index.html", "dist/index.html");

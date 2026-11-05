@@ -1,10 +1,10 @@
+import { isCalibratedPdf } from "./document-filter.js";
 import { connect, WindowMessenger } from "penpal";
 const allowed =
   /^https:\/\/(app|sweden|japan|australia|staging|dev)\.streambim\.com$/;
 export class StreamBIM {
   constructor() {
-    this.proofs = new Map();
-    this.pending = new Map();
+    this.connection = null;
   }
   async connect() {
     if (window.parent === window)
@@ -32,6 +32,7 @@ export class StreamBIM {
         throw new Error("Kunde inte verifiera StreamBIM-miljön.");
       this.environment = origin;
       this.email = await this.api.getUserEmail();
+      this.api.setShowExpandButton(true).catch(() => {});
     } finally {
       window.removeEventListener("message", listener);
     }
@@ -42,7 +43,9 @@ export class StreamBIM {
       raw = await this.api.makeApiRequest({ url: path, ...options });
     } catch {
       throw new Error(
-        "StreamBIM-anropet misslyckades. Kontrollera dokumentbehörighet och anslutning.",
+        "StreamBIM-anropet misslyckades: " +
+          path.split("?")[0] +
+          ". Kontrollera dokumentbehörighet och anslutning.",
       );
     }
     try {
@@ -73,11 +76,7 @@ export class StreamBIM {
       if (!Array.isArray(response.data))
         throw new Error("StreamBIM returnerade ingen dokumentlista.");
       for (const d of response.data) {
-        if (
-          d.attributes["is-deleted"] ||
-          !d.attributes.filename?.toLowerCase().endsWith(".pdf")
-        )
-          continue;
+        if (!isCalibratedPdf(d)) continue;
         const labelIds = new Set(
           (d.relationships?.labels?.data || []).map((l) => l.id),
         );
@@ -113,12 +112,18 @@ export class StreamBIM {
       revisions: [{ id: rid, number: n }],
       latestId: rid,
       numRevisions: d.attributes["num-revisions"],
+      calibrationCount:
+        d.relationships?.["document-alignments"]?.data?.length || 0,
     };
   }
   async document(id) {
     const response = await this.request(
       this.base() + "/v2/documents/" + encodeURIComponent(id),
     );
+    if (!isCalibratedPdf(response.data))
+      throw new Error(
+        "Dokumentet är inte längre en kalibrerad PDF i StreamBIM.",
+      );
     return this.normalize(response.data);
   }
   async revisions(id) {
@@ -160,50 +165,34 @@ export class StreamBIM {
       throw new Error(
         "Nedladdningslänken ligger utanför dokumentets verifierade StreamBIM-adress.",
       );
-    if (!url.searchParams.size)
-      throw new Error(
-        "StreamBIM-länken saknar signerad åtkomst. Binärhämtning via text-API används aldrig.",
-      );
+    if (!url.searchParams.size) {
+      // Same short-lived-token flow used by StreamBIM's storeservice.microtokenUrl.
+      const response = await this.request(this.base() + "/microtoken", {
+        accept: "application/json",
+      });
+      if (typeof response?.microtoken !== "string" || !response.microtoken)
+        throw new Error(
+          "StreamBIM kunde inte utfärda en tillfällig nedladdningslänk.",
+        );
+      url.searchParams.set("microtoken", response.microtoken);
+    }
     return url.href;
-  }
-  async proof(documentId) {
-    const cached = this.proofs.get(documentId);
-    if (cached && Date.now() - cached.at < 45000) return cached.url;
-    if (this.pending.has(documentId)) return this.pending.get(documentId);
-    const promise = this.downloadLink(documentId)
-      .then((url) => {
-        this.proofs.set(documentId, { url, at: Date.now() });
-        return url;
-      })
-      .finally(() => this.pending.delete(documentId));
-    this.pending.set(documentId, promise);
-    return promise;
   }
   async pdf(documentId, revision) {
     const url = await this.downloadLink(documentId, revision);
     const response = await fetch(url, {
       credentials: "omit",
       cache: "no-store",
-      redirect: "error",
+      redirect: "follow",
       referrerPolicy: "no-referrer",
     });
     if (
       !response.ok ||
-      !(response.headers.get("content-type") || "").includes("application/pdf")
+      (response.headers.get("content-type") || "").includes("text/html")
     )
       throw new Error(
         "PDF-binärdata kunde inte hämtas direkt från StreamBIM. Kontrollera signerad länk och CORS för widgetens Vercel-adress.",
       );
     return response;
-  }
-  annotationPath(documentId) {
-    return (
-      "/api/annotations?" +
-      new URLSearchParams({
-        environment: this.environment,
-        projectId: this.projectId,
-        documentId,
-      })
-    );
   }
 }

@@ -1,18 +1,20 @@
-# Team 5 · Ritningsbord på Vercel
+# Team 5 · Ritningsbord mockup
 
 App: https://sb-hackathon-team-5.vercel.app/
 
-GitHub main är kopplad till Vercel. Appens statiska läsare byggs av scripts/build.mjs till dist/. API:t körs som Vercel Node Functions i api/. Ingen omdirigering, autentisering eller databas från Sites används.
+GitHub main publiceras direkt på Vercel. Detta är nu en mockup utan databas, autosparning eller samarbete. Annoteringar finns endast i den aktuella flikens JavaScript-minne och försvinner vid omladdning. Inga annoteringar eller PDF-filer skrivs till localStorage, sessionStorage, IndexedDB, Vercel eller en databas.
 
-PDF-filer hämtas direkt från StreamBIM till webbläsarens arbetsminne. PDF-filer lagras aldrig i appens beständiga lagring, Vercel eller databasen. Endast annoteringar, sparningskvitton och tekniska sessionsmetadata lagras i PostgreSQL. Kopplingen är StreamBIM-miljö + projekt-ID + dokument-ID + sidindex; revisions-ID används bara som skapandehistorik.
+## StreamBIM
 
-## Databas
+Öppna Team 5-widgeten i StreamBIM. Projekt-ID och användarsession hämtas från förälderns widget-API; projekt-ID är inte hårdkodat. Penpal laddas före PDF.js för att ansluta inom värdens korta tidsgräns. PDF.js laddas först när ett dokument ska visas.
 
-Använd befintlig PostgreSQL-anslutning i Vercels servermiljö: DATABASE_URL eller POSTGRES_URL. Inga nycklar skickas till klienten. Bygget kör migrationen migrations/0001_annotations.sql i en transaktion. Endast egna rb_-tabeller skapas; andra tabeller i en befintlig databas ändras inte.
+Biblioteket visar endast PDF-filer med minst en document-alignment i StreamBIM. Enbart ett scale-värde räknas inte som kalibrering. Detta följer StreamBIMs documentAlignments-modell och calibratedFloorplansForFloor i den publika produktionsklienten, undersökt 2026-11-05.
 
-Om anslutning saknas publiceras läsaren med tydligt läsläge. Ritverktygen är då spärrade. Ingen lokal fil eller serverdisk används som låtsasdatabas. Efter att projektägaren har anslutit PostgreSQL måste en ny deployment göras. GET /api/status visar databasens verifierade status utan att exponera anslutningssträngen.
+Filnamnssökning och label-ID-filter (minst en/alla valda) finns kvar. Senaste aktiva revision hämtas vid öppning. Tidigare revisioner kan väljas. Markeringar delas mellan revisioner endast i den aktuella flikens minne och använder exakt samma PDF-koordinater. Byter du dokument finns dess markeringar kvar tills fliken laddas om.
 
-## Körning
+PDF-binärdata hämtas direkt från StreamBIM med dess downloadlink. Om länken saknar token används det observerade /microtoken-flödet. Tidigare revision använder downloadlink?revision=<nummer>. Inga PDF-data passerar Vercels API och ingen serverproxy används. Vercel-ursprunget behöver tillåtas av StreamBIMs CORS-regler för direkt binärhämtning.
+
+## Körning och verifiering
 
 Node 22.20 eller senare:
 
@@ -23,14 +25,8 @@ npm test
 npm run dev
 ```
 
-Sätt DATABASE_URL i servermiljön för lokal gemensam sparning. Utan databas fungerar läsläge. Öppna appen i StreamBIMs widgetram för att använda den inloggade StreamBIM-sessionen. Projekt-ID läses från widget-API:t och är inte hårdkodat.
+Databasvariabler behövs inte och bygget kör inga migreringar. /api/status rapporterar mock/storage:none; /api/annotations nekar skrivning med 410. Tidigare databasimplementation och dess tester finns kvar som vilande utvecklingskod och anropas inte av mockupen.
 
-## Verifierat och kvarvarande
+Tester omfattar PDF-koordinater och crop/rotation, kalibreringsfilter, label-ID:n, revisionslänkar, microtoken och minnesbaserade annoteringar som inte kan återläsas i en ny session. Backendens tidigare tester finns kvar, men innebär inte att mockupen sparar något. Fysiska iOS/Android-gester måste fortfarande testas separat.
 
-Nio tester är godkända: PDF-koordinater, zoom/pan, rotation/beskärning, återläsning, idempotens, konflikter, raderingsskydd, projektisolering samt PostgreSQL-transaktioner och serverutfärdade webbläsarsessioner. PostgreSQL-testet kör den riktiga PostgreSQL-motorn i PGlite, inte en simulerad SQL-parser.
-
-Direkt PDF-GET/CORS och signerad HEAD för dokumentåtkomst behöver verifieras i StreamBIM. Två verkliga användare och fysiska iOS/Android-enheter är ännu inte verifierade. API:t nekar åtkomst om dokumentets signerade länk inte kan kontrolleras. Ritverktyg aktiveras först efter verifierad databas- och dokumentåtkomst.
-
-Skapare/redigerare registreras som serverutfärdade webbläsarsessioner, inte som verifierad StreamBIM-e-post. Behörighet till annoteringar kontrolleras separat med en sessionsutfärdad, dokumentbunden StreamBIM-länk. En utgången eller borttagen webbläsarcookie ger en ny besökaridentitet.
-
-Se pdf-widget/README.md för koordinatkontrakt, revisioner och verktyg. Ursprungliga startfiler ligger kvar i src/ och starter-index.html men används inte i produktionsbygget.
+Se pdf-widget/README.md för koordinatkontrakt och licenser.

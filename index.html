@@ -22,7 +22,7 @@
       </div>
       <div class="workspace">
         <span class="workspace-dot"></span> StreamBIM dokumentbibliotek
-        <span class="prototype">PROTOTYP</span>
+        <span class="prototype">MOCKUP</span>
       </div>
       <button id="helpButton" class="header-help">
         ? <span>Så fungerar det</span></button
@@ -33,11 +33,11 @@
         <div class="library-heading">
           <span class="eyebrow">ARBETSYTA</span>
           <h1>Dokumentbibliotek <span id="docCount">0</span></h1>
-          <p>Ritningar, revisioner och gemensamma markeringar.</p>
+          <p>Kalibrerade PDF-filer och tillfälliga markeringar.</p>
         </div>
         <div class="source-note">
           ↗ PDF läses direkt från StreamBIM<br /><small
-            >Endast annoteringar lagras här</small
+            >Ingenting sparas i mockupen</small
           >
         </div>
         <label class="search"
@@ -58,7 +58,7 @@
           </select></label
         >
         <div class="list-heading">
-          <span>PDF-DOKUMENT</span
+          <span>KALIBRERADE PDF</span
           ><button id="refreshButton" aria-label="Uppdatera bibliotek">
             ↻
           </button>
@@ -191,7 +191,7 @@
                 ×
               </button>
             </div>
-            <p class="muted-small">Gemensamma för alla revisioner</p>
+            <p class="muted-small">Tillfälliga · gemensamma för revisionerna</p>
             <div id="annotationList"></div>
             <button id="applyStyle" class="secondary">
               Använd vald färg och bredd
@@ -221,8 +221,7 @@
             >Dra för att panorera · mushjul för att zooma</span
           ><span id="syncStatus" role="status"
             ><i class="online-dot"></i> Ansluter…</span
-          ><button id="retryButton" hidden>Försök spara igen</button
-          ><button id="exportButton" hidden>Exportera osparat</button>
+          >
         </footer>
       </main>
     </div>
@@ -233,42 +232,42 @@
       ><span class="eyebrow">VÄLKOMMEN TILL RITNINGSBORDET</span>
       <h2>En ritning. Alla på samma sida.</h2>
       <p>
-        Öppna en PDF, välj penna och rita direkt. Dina markeringar sparas
-        separat och synkas med andra som har åtkomst till dokumentet och
-        webbplatsen.
+        Öppna en kalibrerad PDF, välj penna och rita direkt. Markeringarna finns
+        bara i den här flikens minne. De sparas inte och försvinner vid
+        omladdning.
       </p>
       <div class="help-grid">
         <div>
-          <b>✎ Rita & granska</b>
+          <b>✎ Tillfälliga markeringar</b>
           <p>
-            Ett finger eller penna ritar. Välj ett streck för att ändra färg,
-            bredd eller radera.
+            Rita, flytta, ändra och radera. Allt ligger endast i den här flikens
+            minne och försvinner vid omladdning.
           </p>
         </div>
         <div>
-          <b>✥ Navigera enkelt</b>
+          <b>✥ Navigera</b>
           <p>
-            Två fingrar panorerar och zoomar i alla lägen. På dator: mushjul
-            zoomar, mellanslag + dra panorerar.
+            Två fingrar zoomar och panorerar. På dator: mushjul zoomar och
+            mellanslag + dra panorerar.
           </p>
         </div>
         <div>
-          <b>▤ Byt revision</b>
+          <b>▤ Kalibrerade dokument</b>
           <p>
-            Annoteringar följer dokumentets PDF-koordinater. Kontrollera
-            sidordning vid revisionsbyte. Innehåll passas aldrig in automatiskt.
+            Endast PDF-filer med document-alignments i StreamBIM visas. Sök och
+            filtrera med labels.
           </p>
         </div>
         <div>
-          <b>✓ Spara tillsammans</b>
+          <b>↻ Revisioner</b>
           <p>
-            Grön status betyder sparat. Vid fel finns strecken kvar i den lokala
-            kön. Försök igen eller exportera dem.
+            Senaste revision öppnas som standard. Tillfälliga streck använder
+            samma PDF-koordinater även när du väljer en äldre revision.
           </p>
         </div>
       </div>
       <p class="help-note">
-        StreamBIM-widget på Vercel · PDF.js · PostgreSQL för annoteringar.
+        StreamBIM-widget på Vercel · PDF.js · ingen databas eller sparning.
         PDF-filer laddas direkt från StreamBIM utan beständig lagring. * Bredd
         anges i PDF-enheter (normalt 1/72 tum; UserUnit respekteras). Touch på
         fysiska iOS- och Android-enheter återstår att verifiera.

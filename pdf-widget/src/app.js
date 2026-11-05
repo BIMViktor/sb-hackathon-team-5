@@ -1,4 +1,12 @@
-import * as pdfjs from "pdfjs-dist/build/pdf.mjs";
+import { SessionAnnotations } from "./session-annotations.js";
+const sessionAnnotations = new SessionAnnotations();
+let pdfjs;
+async function loadPdfJs() {
+  if (!pdfjs) {
+    pdfjs = await import("pdfjs-dist/build/pdf.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.mjs";
+  }
+}
 import { StreamBIM } from "./streambim.js";
 const sb = new StreamBIM();
 import {
@@ -9,7 +17,7 @@ import {
   pageSignature,
   samePage,
 } from "./geometry.js";
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.mjs";
+
 const $ = (id) => document.getElementById(id),
   stage = $("stage"),
   plane = $("plane"),
@@ -45,7 +53,7 @@ const S = {
   revWarning: "",
   pageWarning: "",
   syncError: "",
-  persistence: false,
+  persistence: true,
   storageWarning: "",
 };
 const colors = [
@@ -56,16 +64,6 @@ const colors = [
   ["#615c91", "Lila"],
   ["#263d41", "Grafit"],
 ];
-const queueKey = () => `ritningsbord-outbox-v1:${S.me?.id || "unknown"}`;
-function persist() {
-  try {
-    localStorage.setItem(queueKey(), JSON.stringify(S.queue));
-  } catch {
-    toast(
-      "Det lokala lagringsutrymmet är fullt. Behåll sidan öppen och exportera osparade annoteringar.",
-    );
-  }
-}
 function toast(message) {
   $("toast").textContent = message;
   $("toast").hidden = false;
@@ -73,64 +71,30 @@ function toast(message) {
   toast.timer = setTimeout(() => ($("toast").hidden = true), 4500);
 }
 function status() {
-  $("storageConnection").innerHTML = S.persistence
-    ? 'Gemensam databas<span class="muted-small">Ändringar synkas automatiskt</span>'
-    : S.me
-      ? 'Sparning är inte ansluten<span class="muted-small">Dokumentet öppnas i läsläge</span>'
-      : 'Väntar på anslutning<span class="muted-small">Öppna widgeten i StreamBIM</span>';
-  document.querySelector('.sidebar-bottom .online-dot').style.background = S.persistence ? '#398d6b' : '#97a29a';
-  const failed = S.queue.some((x) => x.error);
-  const q = S.queue.length;
-  $("syncStatus").innerHTML =
-    `<i class="online-dot"></i>${!S.me ? "Inte ansluten till StreamBIM" : !S.persistence ? "Läsläge · gemensam sparning ej ansluten" : q ? (failed ? "Sparning misslyckades" : `Sparar ${q} ändring${q > 1 ? "ar" : ""}…`) : S.syncError ? "Synkronisering misslyckades" : "Sparat · synkas automatiskt"}`;
-  $("syncStatus").classList.toggle("error", failed || !!S.syncError);
-  $("retryButton").hidden = !failed;
-  $("exportButton").hidden = !q;
-  $("undoButton").disabled = !S.undo.length || q > 0;
-  $("redoButton").disabled = !S.redo.length || q > 0;
-  $("deleteButton").disabled = !selected() || q > 0;
-  $("applyStyle").disabled = !selected() || q > 0;
+  $("storageConnection").innerHTML =
+    'Mockup · sparas inte<span class="muted-small">Markeringar försvinner vid omladdning</span>';
+  document.querySelector(".sidebar-bottom .online-dot").style.background =
+    "#b69a57";
+  $("syncStatus").textContent = S.me
+    ? "Mockup · " + activeAnnotations().length + " tillfälliga annoteringar"
+    : "Inte ansluten till StreamBIM";
+  $("undoButton").disabled = !S.undo.length;
+  $("redoButton").disabled = !S.redo.length;
+  $("deleteButton").disabled = !selected();
+  $("applyStyle").disabled = !selected();
 }
-async function request(path, options = {}) {
+async function request(path) {
   if (path === "/api/documents") return sb.documents();
-  const match = path.match(/^\/api\/documents\/([^/]+)\/(annotations|pdf)/);
+  const match = path.match(/^\/api\/documents\/([^/]+)\/pdf/);
   if (match) {
-    const id = decodeURIComponent(match[1]);
-    if (match[2] === "pdf") {
-      const rid = new URL(path, location.origin).searchParams.get("revision");
-      return sb.pdf(
-        id,
-        S.doc.revisions.find((r) => r.id === rid),
-      );
-    }
-    options = {
-      ...options,
-      headers: {
-        ...options.headers,
-        "X-StreamBIM-Download": await sb.proof(id),
-      },
-    };
-    path = sb.annotationPath(id);
-  }
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData
-        ? {}
-        : { "Content-Type": "application/json" }),
-      ...options.headers,
-    },
-  });
-  const ct = res.headers.get("content-type") || "";
-  const body = ct.includes("json") ? await res.json() : null;
-  if (!res.ok) {
-    const e = new Error(
-      body?.error || `Kunde inte slutföra åtgärden (${res.status}).`,
+    const id = decodeURIComponent(match[1]),
+      rid = new URL(path, location.origin).searchParams.get("revision");
+    return sb.pdf(
+      id,
+      S.doc.revisions.find((r) => r.id === rid),
     );
-    e.status = res.status;
-    throw e;
   }
-  return body || res;
+  throw new Error("Mockupen har ingen sparningsanslutning.");
 }
 function selected() {
   return S.annotations.find((a) => a.id === S.selected && !a.deleted);
@@ -144,12 +108,6 @@ function notice() {
   $("notice").hidden = !texts.length;
 }
 function setTool(tool) {
-  if (!S.persistence && tool !== "hand") {
-    toast(
-      "Gemensam sparning är inte ansluten. Ritverktygen aktiveras när databas och dokumentåtkomst är verifierade.",
-    );
-    return;
-  }
   S.tool = tool;
   S.gesture = null;
   for (const b of document.querySelectorAll("[data-tool]"))
@@ -340,34 +298,19 @@ async function openDocument(doc, revisionId) {
       request(
         `/api/documents/${encodeURIComponent(doc.id)}/pdf?revision=${encodeURIComponent(S.revision.id)}`,
       ),
-      S.me?.databaseReady
-        ? request(`/api/documents/${encodeURIComponent(doc.id)}/annotations`)
-            .then((records) => {
-              if (epoch === S.epoch) {
-                S.persistence = true;
-                S.storageWarning = "";
-              }
-              return records;
-            })
-            .catch((error) => {
-              if (epoch === S.epoch) {
-                S.persistence = false;
-                S.storageWarning = error.message;
-                setTool("hand");
-              }
-              return [];
-            })
-        : Promise.resolve([]),
+      Promise.resolve(
+        sessionAnnotations.forDocument(sb.environment, sb.projectId, doc.id),
+      ),
     ]);
     if (epoch !== S.epoch) return;
-    S.doc.annotation_count = S.persistence
-      ? annotations.filter((a) => !a.deleted).length
-      : null;
+    S.doc.annotation_count = annotations.filter((a) => !a.deleted).length;
     const card = S.docs.find((d) => d.id === doc.id);
     if (card) card.annotation_count = S.doc.annotation_count;
     renderLibrary();
     let data;
     data = await response.arrayBuffer();
+    if (epoch !== S.epoch) return;
+    await loadPdfJs();
     if (epoch !== S.epoch) return;
     S.task = pdfjs.getDocument({
       data: new Uint8Array(data),
@@ -381,7 +324,7 @@ async function openDocument(doc, revisionId) {
     }
     S.pdf = pdf;
     S.annotations = annotations;
-    overlayPending();
+
     await showPage(0);
     status();
   } catch (e) {
@@ -583,7 +526,7 @@ function renderAnnotations() {
         title = document.createElement("strong"),
         sub = document.createElement("small");
       title.textContent = `${a.tool === "highlight" ? "Överstrykning" : "Pennstreck"} · sida ${a.pageIndex + 1}`;
-      sub.textContent = `${a.width} PDF-enh. · ${a.updatedBy?.slice(0, 18) || "sparar…"}`;
+      sub.textContent = `${a.width} PDF-enh. · ${a.updatedBy?.slice(0, 18) || "mockup"}`;
       text.append(title, sub);
       b.append(c, text);
       b.onclick = async () => {
@@ -637,7 +580,7 @@ stage.addEventListener("pointerdown", (e) => {
     return;
   }
   const point = pdfPoint(e);
-  if (!S.persistence && S.tool !== "hand") return;
+
   if (S.tool === "hand" || S.space) {
     S.gesture = { type: "pan", start: localPoint(e), camera: { ...S.camera } };
     return;
@@ -653,7 +596,7 @@ stage.addEventListener("pointerdown", (e) => {
           hitStroke(point, a.points, tol + a.width / 2),
       );
     S.selected = hit?.id || null;
-    if (hit && !S.queue.length)
+    if (hit)
       S.gesture = { type: "move", start: point, before: structuredClone(hit) };
     draw();
     return;
@@ -809,107 +752,27 @@ window.addEventListener("keyup", (e) => {
   if (e.code === "Space") S.space = false;
 });
 function enqueue(a, deleted) {
-  const op = {
-    operationId: crypto.randomUUID(),
-    id: a.id,
-    expectedVersion: a.version || 0,
+  const now = new Date().toISOString();
+  Object.assign(a, {
     deleted,
-    annotation: structuredClone(a),
-    documentId: S.doc.id,
+    version: (a.version || 0) + 1,
     environment: sb.environment,
     projectId: sb.projectId,
-  };
-  S.queue.push(op);
-  persist();
+    documentId: S.doc.id,
+    createdBy: a.createdBy || sb.email || "Mockup",
+    updatedBy: sb.email || "Mockup",
+    createdAt: a.createdAt || now,
+    updatedAt: now,
+  });
+  S.doc.annotation_count = activeAnnotations().length;
+  const doc = S.docs.find((d) => d.id === S.doc.id);
+  if (doc) doc.annotation_count = S.doc.annotation_count;
+  renderLibrary();
   status();
-  flush();
-}
-function overlayPending() {
-  for (const op of S.queue.filter(
-    (q) =>
-      q.documentId === S.doc?.id &&
-      q.environment === sb.environment &&
-      q.projectId === sb.projectId,
-  )) {
-    const current = S.annotations.find((a) => a.id === op.id);
-    const a = { ...op.annotation, deleted: op.deleted };
-    if (current) Object.assign(current, a);
-    else S.annotations.push(a);
-  }
-}
-async function flush() {
-  if (!S.persistence) return;
-  if (S.saving) return;
-  S.saving = true;
-  try {
-    while (S.queue.length) {
-      const op = S.queue[0];
-      if (op.error) break;
-      if (op.environment !== sb.environment || op.projectId !== sb.projectId) {
-        op.error = "Öppna rätt StreamBIM-projekt för att spara denna ändring.";
-        persist();
-        break;
-      }
-      try {
-        const { documentId } = op;
-        const body = {
-          operationId: op.operationId,
-          id: op.id,
-          expectedVersion: op.expectedVersion,
-          deleted: op.deleted,
-          annotation: op.annotation,
-        };
-        const result = await request(
-          `/api/documents/${encodeURIComponent(documentId)}/annotations`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
-        S.queue.shift();
-        persist();
-        if (S.doc?.id === documentId) {
-          const a = S.annotations.find((a) => a.id === op.id);
-          if (a) Object.assign(a, result);
-        }
-        status();
-      } catch (e) {
-        op.error = e.message;
-        op.conflict = e.status === 409;
-        persist();
-        status();
-        toast(e.message);
-        break;
-      }
-    }
-  } finally {
-    S.saving = false;
-    draw();
-    if (!S.queue.length) library().catch(() => {});
-  }
-}
-async function sync() {
-  if (!S.doc || !S.pdf || S.saving || !S.me?.databaseReady) return;
-  const epoch = S.epoch,
-    id = S.doc.id;
-  try {
-    const records = await request(
-      `/api/documents/${encodeURIComponent(id)}/annotations`,
-    );
-    if (epoch !== S.epoch) return;
-    S.annotations = records;
-    overlayPending();
-    S.syncError = "";
-    S.persistence = true;
-    S.storageWarning = "";
-    notice();
-    updatePageWarning();
-    draw();
-  } catch (e) {
-    S.syncError = e.message;
-    status();
-  }
 }
 function removeSelected() {
   const a = selected();
-  if (!a || S.queue.length) return;
+  if (!a) return;
   const before = structuredClone(a);
   a.deleted = true;
   enqueue(a, true);
@@ -919,7 +782,6 @@ function removeSelected() {
   draw();
 }
 function history(direction) {
-  if (S.queue.length) return;
   const stack = direction === "undo" ? S.undo : S.redo,
     entry = stack.pop();
   if (!entry) return;
@@ -1000,7 +862,7 @@ $("annotationToggle").onclick = () =>
 $("closePanel").onclick = () => ($("annotationPanel").hidden = true);
 $("applyStyle").onclick = () => {
   const a = selected();
-  if (!a || S.queue.length) return;
+  if (!a) return;
   const before = structuredClone(a);
   a.color = S.color;
   a.width = S.widths[a.tool];
@@ -1008,29 +870,6 @@ $("applyStyle").onclick = () => {
   S.undo.push({ before, after: structuredClone(a) });
   S.redo = [];
   draw();
-};
-$("retryButton").onclick = () => {
-  for (const op of S.queue) delete op.error;
-  persist();
-  flush();
-};
-$("exportButton").onclick = () => {
-  const blob = new Blob(
-    [
-      JSON.stringify(
-        { format: "ritningsbord-outbox-v1", operations: S.queue },
-        null,
-        2,
-      ),
-    ],
-    { type: "application/json" },
-  );
-  const url = URL.createObjectURL(blob),
-    a = document.createElement("a");
-  a.href = url;
-  a.download = "osparade-annoteringar.json";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 $("copyUrl").onclick = () =>
   navigator.clipboard
@@ -1045,51 +884,30 @@ new ResizeObserver(() => {
     scheduleRaster();
   }
 }).observe(stage);
-window.addEventListener("online", () => {
-  for (const op of S.queue) if (!op.conflict) delete op.error;
-  flush();
-  sync();
-});
-window.addEventListener("beforeunload", (e) => {
-  if (S.queue.length) {
-    e.preventDefault();
-    e.returnValue = "";
-  }
-});
 async function init() {
   renderColors();
   renderSizes();
   status();
   try {
     await sb.connect();
-    S.me = await request("/api/me");
-    if (!S.me.databaseReady) {
-      S.persistence = false;
-      S.storageWarning =
-        S.me.error || "Gemensam databas är inte ansluten i Vercel.";
-      notice();
-    }
-    document.querySelector(".workspace").firstChild.textContent =
-      `StreamBIM · projekt ${sb.projectId} `;
+    S.me = { id: sb.email || "mockup", name: sb.email || "Mockup" };
+    S.storageWarning =
+      "MOCKUP: annoteringar finns bara i den här flikens minne. De sparas inte och försvinner vid omladdning.";
+    notice();
+    document.querySelector(".workspace").textContent =
+      "StreamBIM · projekt " + sb.projectId + " · kalibrerade PDF";
     $("avatar").textContent = S.me.name.slice(0, 1).toUpperCase();
-    try {
-      S.queue = S.me.id
-        ? JSON.parse(localStorage.getItem(queueKey()) || "[]")
-        : [];
-    } catch {
-      S.queue = [];
-      toast("Den lokala sparningskön kunde inte läsas.");
-    }
+    $("documentName").textContent = "Hämtar kalibrerade PDF-filer…";
     await library();
     if (S.docs.length) await openDocument(S.docs[0]);
     else {
       $("loading").hidden = true;
       $("empty").hidden = false;
+      $("documentName").textContent = "Inga kalibrerade PDF-filer";
+      $("empty").querySelector("p").textContent =
+        "Projektets PDF-filer behöver ha en document-alignment i StreamBIM för att visas här.";
     }
-    flush();
-    setInterval(() => {
-      if (!document.hidden) sync();
-    }, 2500);
+
     setInterval(() => {
       if (!document.hidden) library().catch(() => {});
     }, 15000);
